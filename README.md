@@ -1,36 +1,37 @@
 # Project Structure Parser & Minifier json
 
-**Project Structure Parser & Minifier** — это библиотека для создания структуры вашего проекта, и подготовки кода для использования в чатах с искусственным интеллектом методом минификации json-файлов. Эта библиотека состоит из двух основных скриптов: `build-structure.js` и `minify-code.js`, которые вместе обеспечивают удобный процесс парсинга структуры проекта и работы с его содержимым. Минификация не нарушает структуру кода.
---- 
-[example](example.jpg)
-
----
-## Что делает библиотека?
-
-1. **Сканирование структуры проекта** (`build-structure.js`):
-   - Позволяет выбрать один из двух режимов:
-     - **Полное сканирование**: парсит весь проект с корневой директории, исключая служебные папки (например, `node_modules`, `.git` и т.д.).
-     - **Выборочное сканирование**: анализирует только указанные вами файлы и директории.
-   - Результат сохраняется в минифицированный JSON-файл `project-structure.min.json`, идеально подходящий для передачи в AI-системы.
-
-2. **Интерактивная минификация файлов** (`minify-code.js`):
-   - Использует структуру из `project-structure.min.json` для предоставления интерактивного интерфейса.
-   - Позволяет выбрать файлы для минификации с цветным отображением директорий(настраивается в ручную), учётом файлов из `.gitignore` и подсчётом общего количества символов.
-   - Если был выбран файл который указан в `.gitignore`, то выводится предупреждение, а так же выбор помечается красным крестом. p.s.: сделанно для предотвращения отправки секретов по типу .env в чаты.
-   - В файле project-code.min.json код файла начинается с указания относительного пути этого файла, поэтому чат не будет путаться в структуре(достаточно скинуть только этот файл в чат).
-   - Сохраняет содержимое выбранных файлов в минифицированный JSON-файл `project-code.min.json`, оптимизированный для экономии токенов в AI-чатах.
-   - Поддерживает сохранение и управление выборками файлов (load/save/delete).
+**Project Structure Parser & Minifier** is a library for creating your project's structure and preparing code for use in artificial intelligence chats by minifying json files. This library consists of two main scripts: `build-structure.js` and `minify-code.js`, which together provide a convenient process for parsing the project structure and working with its contents. Minification does not disrupt the code structure.  
+---  
+![example](example.jpg)
 
 ---
 
-## Установка
+## What does the library do?
 
-1. Убедитесь, что у вас установлен Node.js версии 16 или выше.
-2. Установите библиотеку через npm:
+1. **Project structure scanning** (`build-structure.js`):
+   - Allows you to choose one of two modes:
+     - **Full scan**: parses the entire project from the root directory, excluding service folders (e.g., `node_modules`, `.git`, etc.).
+     - **Selective scan**: analyzes only the files and directories you specify.
+   - The result is saved in a minified JSON file `project-structure.min.json`, ideal for transmission to AI systems.
+
+2. **Interactive file minification** (`minify-code.js`):
+   - Uses the structure from `project-structure.min.json` to provide an interactive interface.
+   - Allows you to select files for minification with color-coded directory display (configurable manually), consideration of files from `.gitignore`, and counting the total number of characters.
+   - If a file listed in `.gitignore` is selected, a warning is displayed, and the selection is marked with a red cross. P.S.: This is done to prevent sending secrets like `.env` files to chats.
+   - In the `project-code.min.json` file, the file's code begins with an indication of its relative path, so the chat won’t get confused about the structure (it’s enough to send just this file to the chat).
+   - Saves the contents of selected files into a minified JSON file `project-code.min.json`, optimized for saving tokens in AI chats.
+   - Supports saving and managing file selections (load/save/delete).
+
+---
+
+## Installation
+
+1. Ensure you have Node.js version 16 or higher installed.
+2. Install the library via npm:
    ```bash
    npm install project-minifier
    ```
-3. Добавьте скрипты в ваш `package.json`:
+3. Add scripts to your `package.json`:
    ```json
    "scripts": {
      "build-structure": "node bin/build-structure-cli.js",
@@ -41,23 +42,23 @@
 
 ---
 
-## Настройка
+## Configuration
 
-Библиотека готова к использованию "из коробки", но вы можете легко настроить её под свои нужды:
+The library is ready to use "out of the box," but you can easily customize it to suit your needs:
 
-### 1. Настройка выборочного парсинга (второй режим в `build-structure.js`)
-Если вы выбрали режим "Scan only specified files and directories" (ввод `2`), библиотека парсит только указанные файлы и директории. Настройки находятся в функции `main()` в файле `build-structure.js`:
+### 1. Configuring selective parsing (second mode in `build-structure.js`)
+If you choose the "Scan only specified files and directories" mode (input `2`), the library parses only the files and directories you specify. The settings are located in the `main()` function in the `build-structure.js` file:
 
 ```javascript
-const dirs = ['src', 'server', 'supabase/migrations']; // Указанные директории
-const files = ['package.json', 'redis.conf', 'README.md', 'game_readme.md']; // Указанные файлы
+const dirs = ['src', 'server', 'supabase/migrations']; // Specified directories
+const files = ['package.json', 'redis.conf', 'README.md', 'game_readme.md']; // Specified files
 ```
 
-- **Где менять**: Найдите эти строки внизу файла `build-structure.js` внутри функции `main()`.
-- **Совет**: Указывайте пути относительно корня проекта.
+- **Where to change**: Find these lines at the bottom of the `build-structure.js` file inside the `main()` function.
+- **Tip**: Specify paths relative to the project root (where the script is run).
 
-### 2. Настройка исключений для полного парсинга (первый режим в `build-structure.js`)
-При выборе режима "Scan all project files" (ввод `1`) скрипт парсит весь проект, исключая заданные директории. Список исключений находится в функции `buildStructureJSON` в файле `build-structure.js`:
+### 2. Configuring exclusions for full parsing (first mode in `build-structure.js`)
+When selecting the "Scan all project files" mode (input `1`), the script parses the entire project, excluding specified directories. The list of exclusions is located in the `buildStructureJSON` function in the `build-structure.js` file:
 
 ```javascript
 const excludedDirs = [
@@ -66,45 +67,45 @@ const excludedDirs = [
 ];
 ```
 
-- **Где менять**: Найдите массив `excludedDirs` внутри функции `buildStructureJSON`.
+- **Where to change**: Find the `excludedDirs` array inside the `buildStructureJSON` function.
 
 ---
 
-## Использование
+## Usage
 
-1. **Построение структуры проекта**:
+1. **Building the project structure**:
    ```bash
    npm run build-structure
    ```
-   - Выберите режим:
-     - `1` — полный парсинг с исключениями.
-     - `2` — выборочный парсинг указанных файлов и папок.
-   - Результат: `json-project/project-structure.min.json`.
+   - Choose a mode:
+     - `1` — full parsing with exclusions.
+     - `2` — selective parsing of specified files and folders.
+   - Result: `json-project/project-structure.min.json`.
 
-2. **Минификация файлов**:
+2. **File minification**:
    ```bash
    npm run minify-code
    ```
-   - Выберите действие:
-     - **Select files to minify**: интерактивный выбор файлов с подсчётом символов.
-     - **Load a saved selection**: загрузка сохранённой выборки.
-     - **Manage saved selections**: управление выборками (удаление).
-     - **Exit**: выход.
-   - Используйте `Space` для выбора, `left`/`right` для переключения колонок, `Enter` для подтверждения.
-   - Результат: `json-project/project-code.min.json`.
+   - Choose an action:
+     - **Select files to minify**: interactive file selection with character counting.
+     - **Load a saved selection**: load a previously saved selection.
+     - **Manage saved selections**: manage selections (delete).
+     - **Exit**: exit.
+   - Use `Space` to select, `left`/`right` to switch columns, `Enter` to confirm.
+   - Result: `json-project/project-code.min.json`.
 
 ---
 
-## Почему стоит использовать?
+## Why use it?
 
-- **Гибкость**: Настраиваемые параметры.
-- **Интерактивность**: Удобный cli-интерфейс с визуальной обратной связью.
-- **Подготовка для AI**: Структурированный JSON и минификация кода для чатов с AI.
-- **Эффективность**: Оптимизация данных для экономии места и токенов.
-- **Скорость**: Работает быстро и не требует много ресурсов.
-- **Выборка файлов**: Вы можете выбрать только нужные файлы и папки.
-- **Управление выборками**: Вы можете сохранять(автоматически создаёт папку для сохранений), загружать и удалять выборки.
+- **Flexibility**: Configurable parameters.
+- **Interactivity**: Convenient CLI interface with visual feedback.
+- **AI preparation**: Structured JSON and code minification for AI chats.
+- **Efficiency**: Data optimization for saving space and tokens.
+- **Speed**: Works quickly and doesn’t require many resources.
+- **File selection**: You can choose only the necessary files and folders.
+- **Selection management**: You can save (automatically creates a folder for saves), load, and delete selections.
 
 ---
 
-Настройте библиотеку под свои задачи и упрощайте подготовку кода для AI-чатов.
+Configure the library for your tasks and simplify code preparation for AI chats.
