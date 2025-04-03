@@ -6,208 +6,160 @@ import chalk from 'chalk';
 import cliBoxes from 'cli-boxes';
 
 // Constants for directories and paths
-const SAVES_DIR = path.join('json-project', 'minify-saves'); // Directory for saved file selections
-const JSON_DIR = 'json-project'; // Directory for JSON files
-const GITIGNORE_PATH = '.gitignore'; // Path to the .gitignore file
+const SAVES_DIR = path.join('json-project', 'minify-saves');
+const JSON_DIR = 'json-project';
+const GITIGNORE_PATH = '.gitignore';
 
-/**
- * Removes ANSI codes (colors) from a string for correct text length calculation
- * @param {string} str - String with possible ANSI codes
- * @returns {string} - String without ANSI codes
- */
 function stripAnsi(str) {
-    return str.replace(/\x1B\[[0-9;]*m/g, ''); // Regular expression to remove ANSI sequences
+    return str.replace(/\x1B\[[0-9;]*m/g, '');
 }
 
-/**
- * Main function for code minification.
- * Provides the user with a choice of actions: minification, loading saves, managing them, or exiting.
- */
 async function minifyCode() {
-    // Ensure the required directories exist
     await fs.ensureDir(JSON_DIR);
     await fs.ensureDir(SAVES_DIR);
-    const saveFiles = await fs.readdir(SAVES_DIR); // Read the list of saved selections
+    const USGS = await fs.readdir(SAVES_DIR);
 
-    // Ask the user what they want to do
     const firstAction = await prompt({
         type: 'select',
         name: 'action',
-        message: chalk.bold('What do you want to do?'), // Bold question
+        message: chalk.bold('What do you want to do?'),
         choices: [
-            { name: 'minify', message: 'Select files to minify' }, // Select files for minification
-            { name: 'load', message: 'Load a saved selection' },   // Load a saved selection
-            { name: 'manage', message: 'Manage saved selections' }, // Manage saved selections
-            { name: 'exit', message: 'Exit' },                     // Exit the program
+            { name: 'minify', message: 'Select files to minify' },
+            { name: 'load', message: 'Load a saved selection' },
+            { name: 'manage', message: 'Manage saved selections' },
+            { name: 'exit', message: 'Exit' },
         ],
     });
 
-    // Process the user's choice
     switch (firstAction.action) {
         case 'minify':
-            // Read the project structure from JSON
             const structure = await fs.readJson(path.join(JSON_DIR, 'project-structure.min.json'));
-            const filePaths = getFilePaths(structure); // Get the list of file paths
-            const selectedFiles = await interactiveSelect(filePaths); // Interactive file selection
+            const filePaths = getFilePaths(structure);
+            const selectedFiles = await interactiveSelect(filePaths);
             if (selectedFiles && selectedFiles.length > 0) {
-                // If files are selected, calculate total characters and minify
                 const totalCharacters = await calculateTotalCharacters(selectedFiles);
                 console.log(chalk.blue(`Total characters in selected files: ${totalCharacters} ; selected files: ${selectedFiles.length}`));
-                await minifyAndSave(selectedFiles); // Minify and save
+                await minifyAndSave(selectedFiles);
             } else {
-                console.log(chalk.yellow('No files selected for minification.')); // Warning if nothing is selected
+                console.log(chalk.yellow('No files selected for minification.'));
             }
             break;
         case 'load':
             if (saveFiles.length > 0) {
-                await loadSave(saveFiles); // Load a saved selection if available
+                await loadSave(saveFiles);
             } else {
-                console.log(chalk.yellow('No saved selections found.')); // Message if no saves exist
+                console.log(chalk.yellow('No saved selections found.'));
             }
             break;
         case 'manage':
             if (saveFiles.length > 0) {
-                await manageSaves(saveFiles); // Manage saved selections
+                await manageSaves(saveFiles);
             } else {
-                console.log(chalk.yellow('No saved selections found to manage.')); // Message if no saves exist
+                console.log(chalk.yellow('No saved selections found to manage.'));
             }
             break;
         case 'exit':
-            console.log(chalk.gray('Exiting.')); // Exit the program
+            console.log(chalk.gray('Exiting.'));
             break;
     }
 }
 
-/**
- * Calculates the total number of characters in the selected files.
- * @param {string[]} filePaths - Array of file paths
- * @returns {Promise<number>} - Total number of characters
- */
 async function calculateTotalCharacters(filePaths) {
     let totalCharacters = 0;
     for (const filePath of filePaths) {
         try {
-            const fileContent = await fs.readFile(filePath, 'utf-8'); // Read file contents
-            totalCharacters += fileContent.length; // Add content length
+            const fileContent = await fs.readFile(filePath, 'utf-8');
+            totalCharacters += fileContent.length;
         } catch (error) {
-            console.error(chalk.red(`Error reading file: ${filePath}`), error); // Error reading file
+            console.error(chalk.red(`Error reading file: ${filePath}`), error);
         }
     }
     return totalCharacters;
 }
 
-/**
- * Minifies the contents of selected files and saves the result to JSON.
- * @param {string[]} selectedFiles - Array of paths to selected files
- */
 async function minifyAndSave(selectedFiles) {
-    const code = await readFiles(selectedFiles); // Read file contents
-    const codeJSON = JSON.stringify(code); // Convert to JSON string
-    const minifiedCodeJSON = codeJSON.replace(/\s+/g, ' '); // Remove extra spaces
-    await fs.writeFile(path.join(JSON_DIR, 'project-code.min.json'), minifiedCodeJSON); // Write to file
-    console.log(chalk.green('project-code.min.json created successfully!')); // Successful completion
+    const code = await readFiles(selectedFiles);
+    const codeJSON = JSON.stringify(code);
+    const minifiedCodeJSON = codeJSON.replace(/\s+/g, ' ');
+    await fs.writeFile(path.join(JSON_DIR, 'project-code.min.json'), minifiedCodeJSON);
+    console.log(chalk.green('project-code.min.json created successfully!'));
 }
 
-/**
- * Loads a saved selection of files and performs minification.
- * @param {string[]} saveFiles - Array of saved file names
- */
 async function loadSave(saveFiles) {
     const loadSavePrompt = new Select({
         name: 'selectedSave',
         message: chalk.bold('Select save to load:'),
-        choices: [...saveFiles, chalk.bold('Back to main menu')], // Add back option
+        choices: [...saveFiles, chalk.bold('Back to main menu')],
     });
 
-    const selectedSave = await loadSavePrompt.run(); // Prompt user for choice
+    const selectedSave = await loadSavePrompt.run();
+    if (!selectedSave || selectedSave === chalk.bold('Back to main menu')) return;
 
-    if (!selectedSave || selectedSave === chalk.bold('Back to main menu')) {
-        return; // Return to main menu
-    }
-
-    const savePath = path.join(SAVES_DIR, selectedSave); // Path to the saved selection
-    const selectedFiles = await fs.readJson(savePath); // Read file list from save
-    const totalCharacters = await calculateTotalCharacters(selectedFiles); // Calculate characters
+    const savePath = path.join(SAVES_DIR, selectedSave);
+    const selectedFiles = await fs.readJson(savePath);
+    const totalCharacters = await calculateTotalCharacters(selectedFiles);
     console.log(chalk.blue(`Total characters in selected files: ${totalCharacters} ; selected files: ${selectedFiles.length}`));
-    await minifyAndSave(selectedFiles); // Minify and save
+    await minifyAndSave(selectedFiles);
 }
 
-/**
- * Manages saved selections (view, delete).
- * @param {string[]} saveFiles - Array of saved file names
- */
 async function manageSaves(saveFiles) {
     const managePrompt = new Select({
         name: 'saveAction',
         message: chalk.bold('Manage saved selections:'),
         choices: [
-            ...saveFiles, // List of saves
-            { name: 'delete', message: chalk.red('Delete a save') }, // Delete option
-            { name: 'back', message: 'Back to main menu' }, // Back option
+            ...saveFiles,
+            { name: 'delete', message: chalk.red('Delete a save') },
+            { name: 'back', message: 'Back to main menu' },
         ],
     });
 
-    const selectedAction = await managePrompt.run(); // Prompt for choice
-
+    const selectedAction = await managePrompt.run();
     if (selectedAction === 'delete') {
-        await deleteSave(saveFiles); // Delete a save
+        await deleteSave(saveFiles);
     } else if (selectedAction !== 'back') {
-        console.log(chalk.yellow(`Selected save: ${selectedAction}`)); // Show selected save
+        console.log(chalk.yellow(`Selected save: ${selectedAction}`));
     }
 }
 
-/**
- * Deletes a selected save after confirmation.
- * @param {string[]} saveFiles - Array of saved file names
- */
 async function deleteSave(saveFiles) {
     const deletePrompt = new Select({
         name: 'saveToDelete',
         message: chalk.bold(chalk.red('Select a save to delete:')),
-        choices: [...saveFiles, chalk.bold('Cancel')], // Add cancel option
+        choices: [...saveFiles, chalk.bold('Cancel')],
     });
 
-    const saveToDelete = await deletePrompt.run(); // Prompt for choice
-
+    const saveToDelete = await deletePrompt.run();
     if (saveToDelete && saveToDelete !== chalk.bold('Cancel')) {
         const confirmDelete = await prompt({
             type: 'confirm',
             name: 'confirm',
             message: chalk.bold(chalk.red(`Are you sure you want to delete ${saveToDelete}?`)),
-            initial: false, // Default is "no"
+            initial: false,
         });
 
         if (confirmDelete.confirm) {
-            const savePath = path.join(SAVES_DIR, saveToDelete); // Path to save file
-            await fs.remove(savePath); // Remove the file
-            console.log(chalk.green(`Deleted save: ${saveToDelete}`)); // Successful deletion
-            const updatedSaveFiles = await fs.readdir(SAVES_DIR); // Update save list
+            const savePath = path.join(SAVES_DIR, saveToDelete);
+            await fs.remove(savePath);
+            console.log(chalk.green(`Deleted save: ${saveToDelete}`));
+            const updatedSaveFiles = await fs.readdir(SAVES_DIR);
             if (updatedSaveFiles.length > 0) {
-                await manageSaves(updatedSaveFiles); // Continue managing if saves remain
+                await manageSaves(updatedSaveFiles);
             } else {
-                console.log(chalk.yellow('No saved selections left.')); // Message if no saves remain
+                console.log(chalk.yellow('No saved selections left.'));
             }
         } else {
-            console.log(chalk.gray('Delete cancelled.')); // Cancel deletion
-            await manageSaves(saveFiles); // Return to management
+            console.log(chalk.gray('Delete cancelled.'));
+            await manageSaves(saveFiles);
         }
     } else if (saveToDelete !== chalk.bold('Cancel')) {
-        await manageSaves(saveFiles); // Return to management
+        await manageSaves(saveFiles);
     }
 }
 
-/**
- * Interactive file selection for minification with .gitignore support and character counting.
- * @param {string[]} filePaths - Array of file paths
- * @returns {Promise<string[]>} - Array of selected files
- */
 async function interactiveSelect(filePaths) {
-    // Form the list of choices with colored display
     const choices = filePaths.map((filePath) => {
-        const firstDir = filePath.split('/')[0]; // Extract first directory for color coding
+        const firstDir = filePath.split('/')[0];
         let color;
-
-        // Determine color based on directory
         switch (firstDir) {
             case 'src': color = chalk.blue; break;
             case 'server': color = chalk.magenta; break;
@@ -221,176 +173,186 @@ async function interactiveSelect(filePaths) {
             case 'promtail': color = chalk.cyanBright; break;
             case 'prometheus': color = chalk.greenBright; break;
             case 'public': color = chalk.red; break;
-            default: color = chalk.white; // Default color
+            default: color = chalk.white;
         }
-
-        return {
-            name: filePath,         // File name (path)
-            message: color(filePath), // Colored path display
-        };
+        return { name: filePath, message: color(filePath) };
     });
 
-    // Custom class for interactive selection with additional logic
     class CustomSelect extends Select {
         constructor(options) {
             super(options);
-        this.column = 'left'; // Текущий активный столбец (left или right)
-        this.totalCharacters = 0; // Общее количество символов в выбранных файлах
-        this.selectedFilesCount = 0; // Количество выбранных файлов
-        this.selectedFilesGitignore = ''; // Путь к файлу из .gitignore (если выбран)
-        this.gitignorePatterns = []; // Шаблоны из .gitignore
-        this.loadGitignore(); // Загрузка .gitignore при инициализации
-        this.visibleStart = 0; // Начальный индекс видимых элементов
-        this.terminalHeight = process.stdout.rows || 24; // Высота терминала
-        this.innerHeight = this.terminalHeight - 4; // Учитываем границы, заголовок и статистику
-        this.visibleChoiceCount = Math.floor(this.innerHeight / 2); // Количеств
+            this.column = 'left';
+            this.totalCharacters = 0;
+            this.selectedFilesCount = 0;
+            this.selectedFilesGitignore = '';
+            this.gitignorePatterns = [];
+            this.visibleStart = 0;
+            this.updateTerminalDimensions();
+            this.loadGitignore();
 
-            // Обработчик события resize
             process.stdout.on('resize', () => {
-                this.terminalHeight = process.stdout.rows || 24;
-                this.innerHeight = this.terminalHeight - 4;
-                this.visibleChoiceCount = Math.floor(this.innerHeight / 2);
+                this.updateTerminalDimensions();
                 this.render();
             });
         }
 
-        // Load contents of .gitignore to check ignored files
+        updateTerminalDimensions() {
+            this.terminalHeight = process.stdout.rows || 24;
+            this.terminalWidth = process.stdout.columns || 80;
+            this.visibleRows = Math.max(1, this.terminalHeight - 4); // Учитываем верхнюю границу, заголовок, статистику и нижнюю границу
+        }
+
         async loadGitignore() {
             try {
                 const ignoreContent = await fs.readFile(GITIGNORE_PATH, 'utf-8');
                 this.gitignorePatterns = ignoreContent
-                    .split('\n') // Split by lines
-                    .map(line => line.trim()) // Trim spaces*.
-                    .filter(line => line && !line.startsWith('#')); // Filter out empty lines and comments
+                    .split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line && !line.startsWith('#'));
             } catch (error) {
                 if (error.code !== 'ENOENT') {
                     console.error(chalk.yellow(`Warning: Could not read .gitignore: ${error.message}`));
                 }
-                this.gitignorePatterns = []; // Use empty array if .gitignore is not found
+                this.gitignorePatterns = [];
             }
         }
 
-        // Check if a file is ignored according to .gitignore
         isPathIgnored(filePath) {
             return this.gitignorePatterns.some(pattern => {
-                const regexPattern = new RegExp(
-                    '^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$'
-                ); // Convert pattern to regular expression
-                return regexPattern.test(filePath); // Check for match
+                const regexPattern = new RegExp('^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$');
+                return regexPattern.test(filePath);
             });
         }
 
-        // Render the file selection interface in two columns within a fixed frame
         async render() {
-            const terminalWidth = process.stdout.columns || 80;
-            const innerWidth = terminalWidth - 2;
-    
-            process.stdout.write('\x1B[2J\x1B[H'); // Очистка экрана
-    
+            this.updateTerminalDimensions();
+            const innerWidth = this.terminalWidth - 2;
+            const headerHeight = 2;
+            const listHeight = Math.max(1, this.terminalHeight - headerHeight - 2);
+        
+            process.stdout.write('\x1B[2J\x1B[H');
+        
             const topBorder = cliBoxes.round.topLeft + cliBoxes.round.top.repeat(innerWidth) + cliBoxes.round.topRight;
             const bottomBorder = cliBoxes.round.bottomLeft + cliBoxes.round.bottom.repeat(innerWidth) + cliBoxes.round.bottomRight;
             const sideBorder = cliBoxes.round.right;
-    
+        
             let output = [topBorder];
-    
+        
+            // Фиксированные верхние строки
             const header = chalk.bold('Select files to minify (Use "Space" to select; "a" to select all files; "right" or "left" arrows to switch columns; "Enter" to confirm):');
             const stats = chalk.blue(`Total characters in selected files: ${this.totalCharacters} ; selected files: ${this.selectedFilesCount}`);
             const gitignoreWarning = this.selectedFilesGitignore ? chalk.yellow(` ; Attention file selected from .gitignore: ${this.selectedFilesGitignore}`) : '';
             const fullStats = stats + gitignoreWarning;
-    
+        
             const padHeader = sideBorder + ' ' + header + ' '.repeat(Math.max(0, innerWidth - 2 - stripAnsi(header).length)) + ' ' + sideBorder;
             const padStats = sideBorder + ' ' + fullStats + ' '.repeat(Math.max(0, innerWidth - 2 - stripAnsi(fullStats).length)) + ' ' + sideBorder;
-    
+        
             output.push(padHeader);
             output.push(padStats);
-    
+        
             const midPoint = Math.ceil(this.choices.length / 2);
-            const leftColumnAll = this.choices.slice(0, midPoint);
-            const rightColumnAll = this.choices.slice(midPoint);
-    
-            // Определяем видимые элементы с учетом смещения
-            const startIndex = this.visibleStart;
-            const endIndex = Math.min(startIndex + this.visibleChoiceCount * 2, this.choices.length);
-            const visibleChoices = this.choices.slice(startIndex, endIndex);
-            const visibleMidPoint = Math.ceil(visibleChoices.length / 2);
-            const leftColumnVisible = visibleChoices.slice(0, visibleMidPoint);
-            const rightColumnVisible = visibleChoices.slice(visibleMidPoint);
-    
-            const cursorIndex = this.state.index;
-    
-            for (let i = 0; i < Math.max(leftColumnVisible.length, rightColumnVisible.length); i++) {
-                const leftChoice = leftColumnVisible[i] || { message: '', enabled: false, name: '' };
-                const rightChoice = rightColumnVisible[i] || { message: '', enabled: false, name: '' };
-    
-                const leftGlobalIndex = startIndex + i;
-                const rightGlobalIndex = startIndex + visibleMidPoint + i;
-    
+            const leftColumn = this.choices.slice(0, midPoint);
+            const rightColumn = this.choices.slice(midPoint);
+            const maxLeftRows = leftColumn.length;
+            const maxRightRows = rightColumn.length;
+        
+            // Корректировка видимой области для левой колонки
+            if (this.column === 'left') {
+                if (this.state.index >= maxLeftRows) {
+                    this.state.index = maxLeftRows - 1;
+                }
+                if (this.state.index < this.visibleStart) {
+                    this.visibleStart = this.state.index;
+                } else if (this.state.index >= this.visibleStart + listHeight) {
+                    this.visibleStart = this.state.index - listHeight + 1;
+                }
+            }
+            // Корректировка видимой области для правой колонки
+            else {
+                const rightIndex = this.state.index - midPoint;
+                if (rightIndex >= maxRightRows) {
+                    this.state.index = midPoint + maxRightRows - 1;
+                }
+                if (rightIndex < this.visibleStart) {
+                    this.visibleStart = rightIndex;
+                } else if (rightIndex >= this.visibleStart + listHeight) {
+                    this.visibleStart = rightIndex - listHeight + 1;
+                }
+            }
+        
+            // Ограничение видимой области
+            this.visibleStart = Math.max(0, Math.min(
+                this.visibleStart,
+                Math.max(maxLeftRows, maxRightRows) - listHeight
+            ));
+        
+            for (let i = 0; i < listHeight; i++) {
+                const rowIndex = this.visibleStart + i;
+                const leftChoice = leftColumn[rowIndex] || { message: '', enabled: false, name: '' };
+                const rightChoice = rightColumn[rowIndex] || { message: '', enabled: false, name: '' };
+        
                 const leftIndicator = leftChoice.enabled ? (this.isPathIgnored(leftChoice.name) ? chalk.red('[x]') : chalk.green('[x]')) : '[ ]';
                 const rightIndicator = rightChoice.enabled ? (this.isPathIgnored(rightChoice.name) ? chalk.red('[x]') : chalk.green('[x]')) : '[ ]';
-    
+        
                 const halfWidth = Math.floor(innerWidth / 2) - 2;
                 const leftText = `${leftIndicator} ${leftChoice.message || ''}`.slice(0, halfWidth);
                 const rightText = `${rightIndicator} ${rightChoice.message || ''}`.slice(0, halfWidth);
-    
-                const isLeftActive = this.column === 'left' && leftGlobalIndex === cursorIndex;
-                const isRightActive = this.column === 'right' && rightGlobalIndex === cursorIndex;
+        
+                const isLeftActive = this.column === 'left' && rowIndex === this.state.index;
+                const isRightActive = this.column === 'right' && rowIndex === (this.state.index - midPoint);
                 const leftDisplay = isLeftActive ? chalk.bgWhite.black(leftText) : leftText;
                 const rightDisplay = isRightActive ? chalk.bgWhite.black(rightText) : rightText;
-    
+        
                 const paddedLeft = sideBorder + ' ' + leftDisplay + ' '.repeat(Math.max(0, halfWidth - stripAnsi(leftDisplay).length));
                 const paddedRight = '  ' + rightDisplay + ' '.repeat(Math.max(0, halfWidth - stripAnsi(rightDisplay).length)) + ' ' + sideBorder;
-    
+        
                 output.push(paddedLeft + paddedRight);
             }
-    
-            // Заполняем оставшееся пространство
+        
             while (output.length < this.terminalHeight - 1) {
                 output.push(sideBorder + ' '.repeat(innerWidth) + sideBorder);
             }
-    
+        
             output.push(bottomBorder);
-    
+        
             this.write(output.join('\n'));
         }
-    
+
         async keypress(input, key) {
             const midPoint = Math.ceil(this.choices.length / 2);
-    
+            const listHeight = Math.max(1, this.terminalHeight - 4);
+            const maxLeftRows = midPoint;
+            const maxRightRows = this.choices.length - midPoint;
+        
             if (key.name === 'down') {
-                if (this.state.index < this.choices.length - 1) {
+                if (this.column === 'left' && this.state.index < maxLeftRows - 1) {
                     this.state.index++;
-                    // Если курсор выходит за нижнюю границу видимой области
-                    if (this.state.index >= this.visibleStart + this.visibleChoiceCount * 2) {
-                        this.visibleStart++;
-                    }
-                    await this.render();
+                } else if (this.column === 'right' && this.state.index < this.choices.length - 1) {
+                    this.state.index++;
                 }
+                await this.render();
                 return;
             } else if (key.name === 'up') {
-                if (this.state.index > 0) {
+                if (this.state.index > (this.column === 'left' ? 0 : midPoint)) {
                     this.state.index--;
-                    // Если курсор выходит за верхнюю границу видимой области
-                    if (this.state.index < this.visibleStart) {
-                        this.visibleStart--;
-                    }
-                    await this.render();
                 }
+                await this.render();
                 return;
             } else if (key.name === 'right' || key.name === 'left') {
                 const newColumn = key.name;
                 if (this.column !== newColumn) {
                     this.column = newColumn;
                     const newIsLeft = this.column === 'left';
-                    if (newIsLeft && this.state.index >= midPoint) {
-                        this.state.index -= midPoint;
-                    } else if (!newIsLeft && this.state.index < midPoint && this.choices.length > midPoint) {
-                        this.state.index += midPoint;
-                    }
-                    // Корректируем visibleStart при смене столбца
-                    if (this.state.index < this.visibleStart) {
-                        this.visibleStart = this.state.index;
-                    } else if (this.state.index >= this.visibleStart + this.visibleChoiceCount * 2) {
-                        this.visibleStart = this.state.index - this.visibleChoiceCount * 2 + 1;
+                    
+                    if (newIsLeft) {
+                        // Переход в левую колонку
+                        this.state.index = Math.min(this.state.index, maxLeftRows - 1);
+                    } else {
+                        // Переход в правую колонку
+                        if (this.state.index < midPoint) {
+                            this.state.index = midPoint;
+                        }
+                        this.state.index = Math.min(this.state.index, this.choices.length - 1);
                     }
                     await this.render();
                 }
@@ -440,100 +402,78 @@ async function interactiveSelect(filePaths) {
                 await this.render();
                 return;
             }
-    
+
             await super.keypress(input, key);
         }
     }
 
-    // Create interactive prompt for file selection
     const selectPrompt = new CustomSelect({
         name: 'selectedFiles',
         message: chalk.bold('Select files to minify:'),
-        choices: choices, // List of files
-        multiple: true,   // Allow multiple selections
+        choices: choices,
+        multiple: true,
         async indicator(state, choice) {
-            // Selection indicator (green or red for ignored)
             return choice.enabled ? (this.isPathIgnored(choice.name) ? chalk.red('[x]') : chalk.green('[x]')) : '[ ]';
         },
         async result() {
-            // Return array of selected paths
             return this.selected.map((choice) => choice.name);
         },
     });
 
-    const selectedFiles = await selectPrompt.run(); // Run selection
+    const selectedFiles = await selectPrompt.run();
 
     if (selectedFiles && selectedFiles.length > 0) {
-        // If files are selected, ask to save the selection
         const confirmSave = new Confirm({
             name: 'saveSelection',
             message: chalk.bold('Do you want to save this selection?'),
-            initial: false, // Default is "no"
+            initial: false,
         });
 
-        const shouldSave = await confirmSave.run(); // Prompt for confirmation
-
+        const shouldSave = await confirmSave.run();
         if (shouldSave) {
-            await saveSelectionToFile(selectedFiles); // Save selection
+            await saveSelectionToFile(selectedFiles);
         }
     }
 
-    return selectedFiles; // Return selected files
+    return selectedFiles;
 }
 
-/**
- * Saves selected files to a JSON file.
- * @param {string[]} selectedFiles - Array of paths to selected files
- */
 async function saveSelectionToFile(selectedFiles) {
     const saveNamePrompt = new Input({
         name: 'saveName',
         message: chalk.bold('Enter save name:'),
-        validate: (value) => value.length > 0, // Ensure name is not empty
+        validate: (value) => value.length > 0,
     });
 
-    const saveName = await saveNamePrompt.run(); // Prompt for save name
-    const savePath = path.join(SAVES_DIR, `${saveName}.json`); // Form path
-    await fs.writeJson(savePath, selectedFiles); // Write selection to file
-    console.log(chalk.green(`Selection saved to ${savePath}`)); // Successful save
+    const saveName = await saveNamePrompt.run();
+    const savePath = path.join(SAVES_DIR, `${saveName}.json`);
+    await fs.writeJson(savePath, selectedFiles);
+    console.log(chalk.green(`Selection saved to ${savePath}`));
 }
 
-/**
- * Extracts all file paths from the project structure object.
- * @param {object} structure - Project structure object
- * @param {string} base - Base path for recursion (default empty)
- * @returns {string[]} - Array of file paths
- */
 function getFilePaths(structure, base = '') {
-    let files = []; // Array of file paths
-    let directories = []; // Array of paths from nested directories
-
+    let files = [];
+    let directories = [];
     for (const key in structure) {
         const value = structure[key];
-        const currentPath = base ? `${base}/${key}` : key; // Current path
+        const currentPath = base ? `${base}/${key}` : key;
         if (typeof value === 'string') {
-            files.push(value); // If it's a string (file), add path
+            files.push(value);
         } else {
-            // If it's an object (directory), recursively get files
             directories = directories.concat(getFilePaths(value, currentPath));
         }
     }
-    return files.concat(directories); // Combine files and nested paths
+    return files.concat(directories);
 }
 
-/**
- * Reads file contents and returns an object with their contents.
- * @param {string[]} filePaths - Array of file paths
- * @returns {Promise<object>} - Object with paths and file contents
- */
 async function readFiles(filePaths) {
     const code = {};
     for (const filePath of filePaths) {
         try {
-            const fileContent = await fs.readFile(filePath, 'utf-8'); // Read file
-            code[filePath] = fileContent; // Save content under path key
+            const fileContent = await fs.readFile(filePath, 'utf-8');
+            code[filePath] = fileContent;
         } catch (error) {
-            console.error(chalk.red(`Error reading file: ${filePath}`), error); // Error reading
+            console.error(chalk.red(`Error reading file: ${filePath}`), error);
         }
     }
     return code;
