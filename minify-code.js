@@ -181,7 +181,8 @@ async function interactiveSelect(filePaths) {
     class CustomSelect extends Select {
         constructor(options) {
             super(options);
-            this.column = 'left';
+            this.currentColumn = 0; // 0-based index of current column
+            this.maxColumns = 5;
             this.totalCharacters = 0;
             this.selectedFilesCount = 0;
             this.selectedFilesGitignore = '';
@@ -199,7 +200,12 @@ async function interactiveSelect(filePaths) {
         updateTerminalDimensions() {
             this.terminalHeight = process.stdout.rows || 24;
             this.terminalWidth = process.stdout.columns || 80;
-            this.visibleRows = Math.max(1, this.terminalHeight - 4); // Учитываем верхнюю границу, заголовок, статистику и нижнюю границу
+            this.visibleRows = Math.max(1, this.terminalHeight - 4);
+            // Calculate number of columns based on width (minimum 100 characters per column)
+            this.activeColumns = Math.min(
+                this.maxColumns,
+                Math.max(1, Math.floor(this.terminalWidth / 100))
+            );
         }
 
         async loadGitignore() {
@@ -228,132 +234,119 @@ async function interactiveSelect(filePaths) {
             this.updateTerminalDimensions();
             const innerWidth = this.terminalWidth - 2;
             const headerHeight = 2;
-            const listHeight = Math.max(1, this.terminalHeight - headerHeight - 2);
-        
+
             process.stdout.write('\x1B[2J\x1B[H');
-        
+
             const topBorder = cliBoxes.round.topLeft + cliBoxes.round.top.repeat(innerWidth) + cliBoxes.round.topRight;
             const bottomBorder = cliBoxes.round.bottomLeft + cliBoxes.round.bottom.repeat(innerWidth) + cliBoxes.round.bottomRight;
             const sideBorder = cliBoxes.round.right;
-        
+
             let output = [topBorder];
-        
-            // Фиксированные верхние строки
-            const header = chalk.bold('Select files to minify (Use "Space" to select; "a" to select all files; "right" or "left" arrows to switch columns; "Enter" to confirm):');
+
+            const header = chalk.bold('Select files to minify (Use "Space" to select; "a" to select all; "right/left" arrows to switch columns; "Enter" to confirm):');
             const stats = chalk.blue(`Total characters in selected files: ${this.totalCharacters} ; selected files: ${this.selectedFilesCount}`);
-            const gitignoreWarning = this.selectedFilesGitignore ? chalk.yellow(` ; Attention file selected from .gitignore: ${this.selectedFilesGitignore}`) : '';
+            const gitignoreWarning = this.selectedFilesGitignore ? chalk.yellow　　　　　(` ; Attention file selected from .gitignore: ${this.selectedFilesGitignore}`) : '';
             const fullStats = stats + gitignoreWarning;
-        
+
             const padHeader = sideBorder + ' ' + header + ' '.repeat(Math.max(0, innerWidth - 2 - stripAnsi(header).length)) + ' ' + sideBorder;
             const padStats = sideBorder + ' ' + fullStats + ' '.repeat(Math.max(0, innerWidth - 2 - stripAnsi(fullStats).length)) + ' ' + sideBorder;
-        
+
             output.push(padHeader);
             output.push(padStats);
-        
-            const midPoint = Math.ceil(this.choices.length / 2);
-            const leftColumn = this.choices.slice(0, midPoint);
-            const rightColumn = this.choices.slice(midPoint);
-            const maxLeftRows = leftColumn.length;
-            const maxRightRows = rightColumn.length;
-        
-            // Корректировка видимой области для левой колонки
-            if (this.column === 'left') {
-                if (this.state.index >= maxLeftRows) {
-                    this.state.index = maxLeftRows - 1;
-                }
-                if (this.state.index < this.visibleStart) {
-                    this.visibleStart = this.state.index;
-                } else if (this.state.index >= this.visibleStart + listHeight) {
-                    this.visibleStart = this.state.index - listHeight + 1;
-                }
+
+            const itemsPerColumn = Math.ceil(this.choices.length / this.activeColumns);
+            const columns = Array(this.activeColumns).fill().map((_, i) =>
+                this.choices.slice(i * itemsPerColumn, (i + 1) * itemsPerColumn)
+            );
+            const columnWidths = Array(this.activeColumns).fill(Math.floor(innerWidth / this.activeColumns) - 2);
+
+            // Определяем максимальную высоту колонок
+            const maxColumnHeight = Math.max(...columns.map(col => col.length));
+            const listHeight = Math.min(maxColumnHeight, this.visibleRows);
+
+            const currentColumnChoices = columns[this.currentColumn];
+            const maxRows = currentColumnChoices.length;
+
+            if (this.state.index >= this.choices.length) {
+                this.state.index = this.choices.length - 1;
             }
-            // Корректировка видимой области для правой колонки
-            else {
-                const rightIndex = this.state.index - midPoint;
-                if (rightIndex >= maxRightRows) {
-                    this.state.index = midPoint + maxRightRows - 1;
-                }
-                if (rightIndex < this.visibleStart) {
-                    this.visibleStart = rightIndex;
-                } else if (rightIndex >= this.visibleStart + listHeight) {
-                    this.visibleStart = rightIndex - listHeight + 1;
-                }
+            const localIndex = this.state.index % itemsPerColumn;
+            if (localIndex < this.visibleStart) {
+                this.visibleStart = localIndex;
+            } else if (localIndex >= this.visibleStart + listHeight) {
+                this.visibleStart = localIndex - listHeight + 1;
             }
-        
-            // Ограничение видимой области
-            this.visibleStart = Math.max(0, Math.min(
-                this.visibleStart,
-                Math.max(maxLeftRows, maxRightRows) - listHeight
-            ));
-        
+            this.visibleStart = Math.max(0, Math.min(this.visibleStart, maxRows - listHeight));
+
             for (let i = 0; i < listHeight; i++) {
                 const rowIndex = this.visibleStart + i;
-                const leftChoice = leftColumn[rowIndex] || { message: '', enabled: false, name: '' };
-                const rightChoice = rightColumn[rowIndex] || { message: '', enabled: false, name: '' };
-        
-                const leftIndicator = leftChoice.enabled ? (this.isPathIgnored(leftChoice.name) ? chalk.red('[x]') : chalk.green('[x]')) : '[ ]';
-                const rightIndicator = rightChoice.enabled ? (this.isPathIgnored(rightChoice.name) ? chalk.red('[x]') : chalk.green('[x]')) : '[ ]';
-        
-                const halfWidth = Math.floor(innerWidth / 2) - 2;
-                const leftText = `${leftIndicator} ${leftChoice.message || ''}`.slice(0, halfWidth);
-                const rightText = `${rightIndicator} ${rightChoice.message || ''}`.slice(0, halfWidth);
-        
-                const isLeftActive = this.column === 'left' && rowIndex === this.state.index;
-                const isRightActive = this.column === 'right' && rowIndex === (this.state.index - midPoint);
-                const leftDisplay = isLeftActive ? chalk.bgWhite.black(leftText) : leftText;
-                const rightDisplay = isRightActive ? chalk.bgWhite.black(rightText) : rightText;
-        
-                const paddedLeft = sideBorder + ' ' + leftDisplay + ' '.repeat(Math.max(0, halfWidth - stripAnsi(leftDisplay).length));
-                const paddedRight = '  ' + rightDisplay + ' '.repeat(Math.max(0, halfWidth - stripAnsi(rightDisplay).length)) + ' ' + sideBorder;
-        
-                output.push(paddedLeft + paddedRight);
+                let row = sideBorder + ' ';
+                
+                for (let col = 0; col < this.activeColumns; col++) {
+                    const columnChoices = columns[col];
+                    const choice = columnChoices[rowIndex] || { message: '', enabled: false, name: '' };
+                    const indicator = choice.enabled ? 
+                        (this.isPathIgnored(choice.name) ? chalk.red('[x]') : chalk.green('[x]')) : 
+                        '[ ]';
+                    
+                    const colIndex = col * itemsPerColumn + rowIndex;
+                    const isActive = col === this.currentColumn && 
+                                   colIndex === this.state.index;
+                    const text = `${indicator} ${choice.message || ''}`.slice(0, columnWidths[col]);
+                    const display = isActive ? chalk.bgWhite.black(text) : text;
+                    
+                    row += display + ' '.repeat(Math.max(0, columnWidths[col] - stripAnsi(display).length));
+                    if (col < this.activeColumns - 1) row += '  ';
+                }
+                
+                row += ' ' + sideBorder;
+                output.push(row);
             }
-        
-            while (output.length < this.terminalHeight - 1) {
-                output.push(sideBorder + ' '.repeat(innerWidth) + sideBorder);
-            }
-        
+
+            // Добавляем нижнюю границу сразу после последней строки колонок
             output.push(bottomBorder);
-        
+
             this.write(output.join('\n'));
         }
 
         async keypress(input, key) {
-            const midPoint = Math.ceil(this.choices.length / 2);
+            const itemsPerColumn = Math.ceil(this.choices.length / this.activeColumns);
             const listHeight = Math.max(1, this.terminalHeight - 4);
-            const maxLeftRows = midPoint;
-            const maxRightRows = this.choices.length - midPoint;
-        
+            const currentColumnStart = this.currentColumn * itemsPerColumn;
+            const currentRow = this.state.index % itemsPerColumn;
+
             if (key.name === 'down') {
-                if (this.column === 'left' && this.state.index < maxLeftRows - 1) {
-                    this.state.index++;
-                } else if (this.column === 'right' && this.state.index < this.choices.length - 1) {
+                if (this.state.index < currentColumnStart + itemsPerColumn - 1 && 
+                    this.state.index < this.choices.length - 1) {
                     this.state.index++;
                 }
                 await this.render();
                 return;
             } else if (key.name === 'up') {
-                if (this.state.index > (this.column === 'left' ? 0 : midPoint)) {
+                if (this.state.index > currentColumnStart) {
                     this.state.index--;
                 }
                 await this.render();
                 return;
-            } else if (key.name === 'right' || key.name === 'left') {
-                const newColumn = key.name;
-                if (this.column !== newColumn) {
-                    this.column = newColumn;
-                    const newIsLeft = this.column === 'left';
-                    
-                    if (newIsLeft) {
-                        // Переход в левую колонку
-                        this.state.index = Math.min(this.state.index, maxLeftRows - 1);
-                    } else {
-                        // Переход в правую колонку
-                        if (this.state.index < midPoint) {
-                            this.state.index = midPoint;
-                        }
-                        this.state.index = Math.min(this.state.index, this.choices.length - 1);
-                    }
+            } else if (key.name === 'right') {
+                if (this.currentColumn < this.activeColumns - 1) {
+                    this.currentColumn++;
+                    const newColumnStart = this.currentColumn * itemsPerColumn;
+                    this.state.index = Math.min(
+                        newColumnStart + currentRow,
+                        this.choices.length - 1
+                    );
+                    await this.render();
+                }
+                return;
+            } else if (key.name === 'left') {
+                if (this.currentColumn > 0) {
+                    this.currentColumn--;
+                    const newColumnStart = this.currentColumn * itemsPerColumn;
+                    this.state.index = Math.min(
+                        newColumnStart + currentRow,
+                        this.choices.length - 1
+                    );
                     await this.render();
                 }
                 return;
