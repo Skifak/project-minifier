@@ -156,7 +156,4 @@ async function main() {
     }
 }
 
-// Run the main function
-main();
-
 export { parseStructure, buildStructureJSON, main };

@@ -1,6 +1,6 @@
 {
   "name": "project-minifier",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A tool for analyzing project structure, minifying files in JSON, and preparing project code for AI chats.",
   "main": "index.js",
   "type": "module",
@@ -11,7 +11,7 @@
   "scripts": {
     "build-structure": "node build-structure.js",
     "minify-code": "node minify-code.js",
-    "all-minifi": "npm run build-structure && npm run minify-code"
+    "all": "npm run build-structure && npm run minify-code"
   },
   "author": "skifak",
   "repository": {

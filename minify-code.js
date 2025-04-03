@@ -495,7 +495,4 @@ async function readFiles(filePaths) {
     return code;
 }
 
-// Run the main function
-minifyCode();
-
 export { minifyCode, interactiveSelect, minifyAndSave, getFilePaths, saveSelectionToFile };
