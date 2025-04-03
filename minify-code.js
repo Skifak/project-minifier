@@ -3,6 +3,7 @@ import path from 'path';
 import pkg from 'enquirer';
 const { Select, Confirm, Input, prompt } = pkg;
 import chalk from 'chalk';
+import cliBoxes from 'cli-boxes';
 
 // Constants for directories and paths
 const SAVES_DIR = path.join('json-project', 'minify-saves'); // Directory for saved file selections
@@ -224,7 +225,7 @@ async function interactiveSelect(filePaths) {
         }
 
         return {
-            name: filePath,       // File name (path)
+            name: filePath,         // File name (path)
             message: color(filePath), // Colored path display
         };
     });
@@ -233,12 +234,24 @@ async function interactiveSelect(filePaths) {
     class CustomSelect extends Select {
         constructor(options) {
             super(options);
-            this.column = 'left'; // Current active column (left or right)
-            this.totalCharacters = 0; // Total characters in selected files
-            this.selectedFilesCount = 0; // Number of selected files
-            this.selectedFilesGitignore = ''; // Path to a file from .gitignore (if selected)
-            this.gitignorePatterns = []; // Patterns from .gitignore
-            this.loadGitignore(); // Load .gitignore on initialization
+        this.column = 'left'; // Текущий активный столбец (left или right)
+        this.totalCharacters = 0; // Общее количество символов в выбранных файлах
+        this.selectedFilesCount = 0; // Количество выбранных файлов
+        this.selectedFilesGitignore = ''; // Путь к файлу из .gitignore (если выбран)
+        this.gitignorePatterns = []; // Шаблоны из .gitignore
+        this.loadGitignore(); // Загрузка .gitignore при инициализации
+        this.visibleStart = 0; // Начальный индекс видимых элементов
+        this.terminalHeight = process.stdout.rows || 24; // Высота терминала
+        this.innerHeight = this.terminalHeight - 4; // Учитываем границы, заголовок и статистику
+        this.visibleChoiceCount = Math.floor(this.innerHeight / 2); // Количеств
+
+            // Обработчик события resize
+            process.stdout.on('resize', () => {
+                this.terminalHeight = process.stdout.rows || 24;
+                this.innerHeight = this.terminalHeight - 4;
+                this.visibleChoiceCount = Math.floor(this.innerHeight / 2);
+                this.render();
+            });
         }
 
         // Load contents of .gitignore to check ignored files
@@ -267,137 +280,168 @@ async function interactiveSelect(filePaths) {
             });
         }
 
-        // Render the file selection interface in two columns
+        // Render the file selection interface in two columns within a fixed frame
         async render() {
-            const terminalWidth = process.stdout.columns || 80; // Terminal width
-            const halfWidth = Math.floor(terminalWidth / 2) - 2; // Width of each column
-
-            const midPoint = Math.ceil(this.choices.length / 2); // Split point for columns
-            const leftColumn = this.choices.slice(0, midPoint); // Left column
-            const rightColumn = this.choices.slice(midPoint);   // Right column
-
-            let output = []; // Array of strings for output
-            
-            process.stdout.write('\x1B[2J\x1B[H'); // Clear terminal screen
-
-            // Warning if a file from .gitignore is selected
-            let gitignoreWarning = '';
-            if (this.selectedFilesGitignore) {
-                gitignoreWarning = chalk.yellow(` ; Attention file selected from .gitignore: ${this.selectedFilesGitignore}`);
-            }
-
-            // Header and statistics
-            output.push(chalk.bold('Select files to minify (Use "Space" to select; "a" to select all files; "right" or "left" arrows to switch columns; "Enter" to confirm):'));
-            output.push(chalk.blue(`Total characters in selected files: ${this.totalCharacters} ; selected files: ${this.selectedFilesCount} ${gitignoreWarning}`));
-            
-            // Determine current cursor position
+            const terminalWidth = process.stdout.columns || 80;
+            const innerWidth = terminalWidth - 2;
+    
+            process.stdout.write('\x1B[2J\x1B[H'); // Очистка экрана
+    
+            const topBorder = cliBoxes.round.topLeft + cliBoxes.round.top.repeat(innerWidth) + cliBoxes.round.topRight;
+            const bottomBorder = cliBoxes.round.bottomLeft + cliBoxes.round.bottom.repeat(innerWidth) + cliBoxes.round.bottomRight;
+            const sideBorder = cliBoxes.round.right;
+    
+            let output = [topBorder];
+    
+            const header = chalk.bold('Select files to minify (Use "Space" to select; "a" to select all files; "right" or "left" arrows to switch columns; "Enter" to confirm):');
+            const stats = chalk.blue(`Total characters in selected files: ${this.totalCharacters} ; selected files: ${this.selectedFilesCount}`);
+            const gitignoreWarning = this.selectedFilesGitignore ? chalk.yellow(` ; Attention file selected from .gitignore: ${this.selectedFilesGitignore}`) : '';
+            const fullStats = stats + gitignoreWarning;
+    
+            const padHeader = sideBorder + ' ' + header + ' '.repeat(Math.max(0, innerWidth - 2 - stripAnsi(header).length)) + ' ' + sideBorder;
+            const padStats = sideBorder + ' ' + fullStats + ' '.repeat(Math.max(0, innerWidth - 2 - stripAnsi(fullStats).length)) + ' ' + sideBorder;
+    
+            output.push(padHeader);
+            output.push(padStats);
+    
+            const midPoint = Math.ceil(this.choices.length / 2);
+            const leftColumnAll = this.choices.slice(0, midPoint);
+            const rightColumnAll = this.choices.slice(midPoint);
+    
+            // Определяем видимые элементы с учетом смещения
+            const startIndex = this.visibleStart;
+            const endIndex = Math.min(startIndex + this.visibleChoiceCount * 2, this.choices.length);
+            const visibleChoices = this.choices.slice(startIndex, endIndex);
+            const visibleMidPoint = Math.ceil(visibleChoices.length / 2);
+            const leftColumnVisible = visibleChoices.slice(0, visibleMidPoint);
+            const rightColumnVisible = visibleChoices.slice(visibleMidPoint);
+    
             const cursorIndex = this.state.index;
-            const isLeftColumn = cursorIndex < midPoint;
-            const rowIndex = isLeftColumn ? cursorIndex : cursorIndex - midPoint;
-
-            // Render rows for both columns
-            for (let i = 0; i < Math.max(leftColumn.length, rightColumn.length); i++) {
-                const leftChoice = leftColumn[i] || { message: '', enabled: false }; // Left column item
-                const rightChoice = rightColumn[i] || { message: '', enabled: false }; // Right column item
-
-                // Selection indicators (green for selected, red for ignored)
+    
+            for (let i = 0; i < Math.max(leftColumnVisible.length, rightColumnVisible.length); i++) {
+                const leftChoice = leftColumnVisible[i] || { message: '', enabled: false, name: '' };
+                const rightChoice = rightColumnVisible[i] || { message: '', enabled: false, name: '' };
+    
+                const leftGlobalIndex = startIndex + i;
+                const rightGlobalIndex = startIndex + visibleMidPoint + i;
+    
                 const leftIndicator = leftChoice.enabled ? (this.isPathIgnored(leftChoice.name) ? chalk.red('[x]') : chalk.green('[x]')) : '[ ]';
                 const rightIndicator = rightChoice.enabled ? (this.isPathIgnored(rightChoice.name) ? chalk.red('[x]') : chalk.green('[x]')) : '[ ]';
-
-                // Truncate text to column width
+    
+                const halfWidth = Math.floor(innerWidth / 2) - 2;
                 const leftText = `${leftIndicator} ${leftChoice.message || ''}`.slice(0, halfWidth);
                 const rightText = `${rightIndicator} ${rightChoice.message || ''}`.slice(0, halfWidth);
-
-                // Highlight active item
-                const isLeftActive = this.column === 'left' && i === rowIndex;
-                const isRightActive = this.column === 'right' && i === rowIndex;
+    
+                const isLeftActive = this.column === 'left' && leftGlobalIndex === cursorIndex;
+                const isRightActive = this.column === 'right' && rightGlobalIndex === cursorIndex;
                 const leftDisplay = isLeftActive ? chalk.bgWhite.black(leftText) : leftText;
                 const rightDisplay = isRightActive ? chalk.bgWhite.black(rightText) : rightText;
-
-                // Pad columns with spaces
-                const leftCleanLength = stripAnsi(leftDisplay).length;
-                const rightCleanLength = stripAnsi(rightDisplay).length;
-                const paddedLeft = leftDisplay + ' '.repeat(halfWidth - leftCleanLength);
-                const paddedRight = rightDisplay + ' '.repeat(halfWidth - rightCleanLength);
-
-                output.push(`${paddedLeft}  ${paddedRight}`); // Add row to output
+    
+                const paddedLeft = sideBorder + ' ' + leftDisplay + ' '.repeat(Math.max(0, halfWidth - stripAnsi(leftDisplay).length));
+                const paddedRight = '  ' + rightDisplay + ' '.repeat(Math.max(0, halfWidth - stripAnsi(rightDisplay).length)) + ' ' + sideBorder;
+    
+                output.push(paddedLeft + paddedRight);
             }
-
-            this.write(output.join('\n')); // Display the interface
+    
+            // Заполняем оставшееся пространство
+            while (output.length < this.terminalHeight - 1) {
+                output.push(sideBorder + ' '.repeat(innerWidth) + sideBorder);
+            }
+    
+            output.push(bottomBorder);
+    
+            this.write(output.join('\n'));
         }
-
-        // Handle keypress events
+    
         async keypress(input, key) {
-            if (key.name === 'right' || key.name === 'left') {
-                // Switch between columns
-                const midPoint = Math.ceil(this.choices.length / 2);
-                const isLeftColumn = this.state.index < midPoint;
-                const rowIndex = isLeftColumn ? this.state.index : this.state.index - midPoint;
-
-                this.column = this.column === 'left' ? 'right' : 'left'; // Toggle active column
-
-                if (this.column === 'right' && rowIndex < this.choices.length - midPoint) {
-                    this.state.index = midPoint + rowIndex; // Move cursor to right column
-                } else if (this.column === 'left') {
-                    this.state.index = rowIndex; // Move cursor to left column
+            const midPoint = Math.ceil(this.choices.length / 2);
+    
+            if (key.name === 'down') {
+                if (this.state.index < this.choices.length - 1) {
+                    this.state.index++;
+                    // Если курсор выходит за нижнюю границу видимой области
+                    if (this.state.index >= this.visibleStart + this.visibleChoiceCount * 2) {
+                        this.visibleStart++;
+                    }
+                    await this.render();
                 }
-
-                await this.render(); // Redraw interface
+                return;
+            } else if (key.name === 'up') {
+                if (this.state.index > 0) {
+                    this.state.index--;
+                    // Если курсор выходит за верхнюю границу видимой области
+                    if (this.state.index < this.visibleStart) {
+                        this.visibleStart--;
+                    }
+                    await this.render();
+                }
+                return;
+            } else if (key.name === 'right' || key.name === 'left') {
+                const newColumn = key.name;
+                if (this.column !== newColumn) {
+                    this.column = newColumn;
+                    const newIsLeft = this.column === 'left';
+                    if (newIsLeft && this.state.index >= midPoint) {
+                        this.state.index -= midPoint;
+                    } else if (!newIsLeft && this.state.index < midPoint && this.choices.length > midPoint) {
+                        this.state.index += midPoint;
+                    }
+                    // Корректируем visibleStart при смене столбца
+                    if (this.state.index < this.visibleStart) {
+                        this.visibleStart = this.state.index;
+                    } else if (this.state.index >= this.visibleStart + this.visibleChoiceCount * 2) {
+                        this.visibleStart = this.state.index - this.visibleChoiceCount * 2 + 1;
+                    }
+                    await this.render();
+                }
                 return;
             } else if (key.name === 'space') {
-                // Toggle file selection
                 const choice = this.choices[this.state.index];
                 if (choice) {
-                    choice.enabled = !choice.enabled; // Toggle selection state
-                    this.totalCharacters = 0; // Reset character counter
-                    this.selectedFilesCount = this.choices.filter(c => c.enabled).length; // Update selected count
-                    this.selectedFilesGitignore = ''; // Reset .gitignore warning
+                    choice.enabled = !choice.enabled;
+                    this.totalCharacters = 0;
+                    this.selectedFilesCount = this.choices.filter(c => c.enabled).length;
+                    this.selectedFilesGitignore = '';
                     for (const c of this.choices) {
                         if (c.enabled) {
                             if (this.isPathIgnored(c.name)) {
-                                this.selectedFilesGitignore = c.name; // Record ignored file path
+                                this.selectedFilesGitignore = c.name;
                             }
                             try {
-                                const content = await fs.readFile(c.name, 'utf-8'); // Read file
-                                this.totalCharacters += content.length; // Add content length
+                                const content = await fs.readFile(c.name, 'utf-8');
+                                this.totalCharacters += content.length;
                             } catch (err) {
-                                console.error(chalk.red(`Error reading file: ${c.name}`), err); // Error reading
+                                console.error(chalk.red(`Error reading file: ${c.name}`), err);
                             }
                         }
                     }
-                    await this.render(); // Redraw interface
-                    return;
+                    await this.render();
                 }
-            }
-
-            await super.keypress(input, key); // Handle other keys via parent class
-        }
-
-        // Toggle selection state (used for "a" - select all)
-        toggle(i) {
-            super.toggle(i);
-            const choice = this.choices[i];
-            if (choice) {
-                this.totalCharacters = 0; // Reset character counter
-                this.selectedFilesCount = this.choices.filter(c => c.enabled).length; // Update count
-                this.selectedFilesGitignore = ''; // Reset warning
-                this.choices.forEach(c => {
+                return;
+            } else if (input === 'a') {
+                const allSelected = this.choices.every(choice => choice.enabled);
+                this.choices.forEach(choice => (choice.enabled = !allSelected));
+                this.totalCharacters = 0;
+                this.selectedFilesCount = this.choices.filter(c => c.enabled).length;
+                this.selectedFilesGitignore = '';
+                for (const c of this.choices) {
                     if (c.enabled) {
                         if (this.isPathIgnored(c.name)) {
-                            this.selectedFilesGitignore = c.name; // Record ignored file path
+                            this.selectedFilesGitignore = c.name;
                         }
-                        fs.readFile(c.name, 'utf-8')
-                            .then(content => {
-                                this.totalCharacters += content.length; // Add content length
-                                this.render(); // Redraw interface
-                            })
-                            .catch(err => {
-                                console.error(chalk.red(`Error reading file: ${c.name}`), err); // Error reading
-                            });
+                        try {
+                            const content = await fs.readFile(c.name, 'utf-8');
+                            this.totalCharacters += content.length;
+                        } catch (err) {
+                            console.error(chalk.red(`Error reading file: ${c.name}`), err);
+                        }
                     }
-                });
-                this.render(); // Redraw interface
+                }
+                await this.render();
+                return;
             }
+    
+            await super.keypress(input, key);
         }
     }
 
