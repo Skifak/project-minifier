@@ -1,6 +1,6 @@
 # Project Structure Parser & Minifier json
 
-**Project Structure Parser & Minifier** is a library for creating your project's structure and preparing code for use in artificial intelligence chats by minifying json files. This library consists of two main scripts: `build-structure.js` and `minify-code.js`, which together provide a convenient process for parsing the project structure and working with its contents. Minification does not disrupt the code structure.  
+#### **Project Structure Parser & Minifier** is a library for creating your project's structure and preparing code for use in artificial intelligence chats by minifying json files. This library consists of two main scripts: `build-structure.js` and `minify-code.js`, which together provide a convenient process for parsing the project structure and working with its contents. Minification does not disrupt the code structure.  
 ---  
 ![example](example.jpg)
 
@@ -34,8 +34,8 @@
 3. Add scripts to your `package.json`:
    ```json
    "scripts": {
-     "build-structure": "node bin/build-structure-cli.js",
-     "minify-code": "node bin/minify-code-cli.js",
+     "build-structure": "build-structure",
+     "minify-code": "minify-code",
      "all-minifi": "npm run build-structure && npm run minify-code"
    }
    ```
